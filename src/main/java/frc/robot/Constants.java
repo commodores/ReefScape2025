@@ -22,7 +22,19 @@ public class Constants {
         public static final double kMinOutput = -1.0;
         public static final double MaxRPM = 5700;
 
-
+        public static final int kFeederStation = 0;
+        public static final int kLevel1 = 0;
+        public static final int kLevel2 = 0;
+        public static final int kLevel3 = 100;
+        public static final int kLevel4 = 150;
+          
 
     }
+
+    public static final class OIConstants {
+        public static final int kDriverOneControllerPort = 0;
+        public static final int kDriverTwoControllerPort = 1;
+        public static final double kDriveDeadband = 0.1;
+        public static final double kTriggerButtonThreshold = 0.2;
+      }
 }

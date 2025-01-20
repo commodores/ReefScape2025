@@ -20,6 +20,10 @@ import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction;
 
 import frc.robot.generated.TunerConstants;
 import frc.robot.subsystems.CommandSwerveDrivetrain;
+import frc.robot.subsystems.Elevator;
+//import frc.robot.subsystems.Elevator;
+import frc.robot.subsystems.ElevatorTwo;
+import frc.robot.subsystems.ElevatorTwo.Setpoint;
 
 public class RobotContainer {
     private double MaxSpeed = TunerConstants.kSpeedAt12Volts.in(MetersPerSecond); // kSpeedAt12Volts desired top speed
@@ -40,6 +44,7 @@ public class RobotContainer {
     private final CommandXboxController joystick = new CommandXboxController(0);
 
     public final CommandSwerveDrivetrain m_Drivetrain = TunerConstants.createDrivetrain();
+    public final Elevator m_Elevator = new Elevator();
 
     public RobotContainer() {
         configureBindings();
@@ -64,17 +69,22 @@ public class RobotContainer {
         ));
 
         
-        joystick.a().whileTrue(m_Drivetrain.applyRequest(() -> brake));
-        joystick.b().whileTrue(m_Drivetrain.applyRequest(() ->
-            point.withModuleDirection(new Rotation2d(-joystick.getLeftY(), -joystick.getLeftX()))
-        ));
+        //joystick.a().whileTrue(m_Drivetrain.applyRequest(() -> brake));
+       // joystick.b().whileTrue(m_Drivetrain.applyRequest(() ->
+         //   point.withModuleDirection(new Rotation2d(-joystick.getLeftY(), -joystick.getLeftX()))
+        //));
+
+         /*Amp Elevator Commands */
+         joystick.y().onTrue(m_Elevator.runOnce(() -> m_Elevator.setElevatorGoalCommand(0.34)));
+         joystick.a().onTrue(m_Elevator.runOnce(() -> m_Elevator.setElevatorGoalCommand(0.0)));
+         joystick.x().onTrue(m_Elevator.runOnce(() -> m_Elevator.setElevatorGoalCommand(0.5)));
 
         // Run SysId routines when holding back/start and X/Y.
         // Note that each routine should be run exactly once in a single log.
-        joystick.back().and(joystick.y()).whileTrue(m_Drivetrain.sysIdDynamic(Direction.kForward));
-        joystick.back().and(joystick.x()).whileTrue(m_Drivetrain.sysIdDynamic(Direction.kReverse));
-        joystick.start().and(joystick.y()).whileTrue(m_Drivetrain.sysIdQuasistatic(Direction.kForward));
-        joystick.start().and(joystick.x()).whileTrue(m_Drivetrain.sysIdQuasistatic(Direction.kReverse));
+       // joystick.back().and(joystick.y()).whileTrue(m_Drivetrain.sysIdDynamic(Direction.kForward));
+       // joystick.back().and(joystick.x()).whileTrue(m_Drivetrain.sysIdDynamic(Direction.kReverse));
+        //joystick.start().and(joystick.y()).whileTrue(m_Drivetrain.sysIdQuasistatic(Direction.kForward));
+        //joystick.start().and(joystick.x()).whileTrue(m_Drivetrain.sysIdQuasistatic(Direction.kReverse));
      
 
         // reset the field-centric heading on left bumper press

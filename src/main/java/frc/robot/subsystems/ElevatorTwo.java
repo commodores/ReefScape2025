@@ -1,74 +1,172 @@
 package frc.robot.subsystems;
 
-import com.revrobotics.spark.SparkMax;
-import com.revrobotics.spark.SparkClosedLoopController;
-import com.revrobotics.spark.SparkMaxConfig;
-import com.revrobotics.spark.SparkLowLevel.MotorType;
-import com.revrobotics.spark.config.SparkBaseConfig.IdleMode;
+import com.revrobotics.RelativeEncoder;
 import com.revrobotics.spark.SparkBase.ControlType;
 import com.revrobotics.spark.SparkBase.PersistMode;
-import com.revrobotics.RelativeEncoder;
-import edu.wpi.first.math.trajectory.TrapezoidProfile;
+import com.revrobotics.spark.SparkBase.ResetMode;
+import com.revrobotics.spark.SparkClosedLoopController;
+import com.revrobotics.spark.SparkFlex;
+import com.revrobotics.spark.SparkLowLevel.MotorType;
+import com.revrobotics.spark.SparkMax;
+
+import edu.wpi.first.wpilibj.RobotController;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
+import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import frc.robot.Configs;
 import frc.robot.Constants;
 
+
 public class ElevatorTwo extends SubsystemBase {
+  /** Subsystem-wide setpoints */
+  public enum Setpoint {
+    kFeederStation,
+    kLevel1,
+    kLevel2,
+    kLevel3,
+    kLevel4;
+  }
 
-    private final SparkMax elevatorMotor;
-    private final SparkClosedLoopController pidController;
-    private final RelativeEncoder encoder;
-    private final TrapezoidProfile.Constraints constraints;
-    private TrapezoidProfile.State goalState;
-    private TrapezoidProfile.State currentState;
+  
 
-    public ElevatorTwo() {
-        // Initialize motor
-        elevatorMotor = new SparkMax(Constants.ElevatorConstants.elevator, MotorType.kBrushless);
+  // Initialize arm SPARK. We will use MAXMotion position control for the arm, so we also need to
 
-        // Initialize PID controller and encoder
-        pidController = elevatorMotor.getClosedLoopController();
-        encoder = elevatorMotor.getEncoder();
+  // Initialize elevator SPARK. We will use MAXMotion position control for the elevator, so we also
+  // need to initialize the closed loop controller and encoder.
+  private SparkMax elevator =
+      new SparkMax(Constants.ElevatorConstants.elevator, MotorType.kBrushless);
+  private SparkClosedLoopController elevatorClosedLoopController =
+      elevator.getClosedLoopController();
+  private RelativeEncoder elevatorEncoder = elevator.getEncoder();
 
-        // Define motion profile constraints
-        constraints = new TrapezoidProfile.Constraints(2.54, 2.54);
+  // Initialize intake SPARK. We will use open loop control for this so we don't need a closed loop
+  // controller like above.
 
-        // Initialize states
-        currentState = new TrapezoidProfile.State(0, 0);
-        goalState = new TrapezoidProfile.State(0, 0);
+  // Member variables for subsystem state management
+  private boolean wasResetByButton = false;
+  private boolean wasResetByLimit = false;
+  private double elevatorCurrentTarget = Constants.ElevatorConstants.kFeederStation;
 
-        // Configure motor settings
-        SparkMaxConfig config = new SparkMaxConfig();
-        config.inverted(true);
-        config.idleMode(IdleMode.kBrake);
-        config.smartCurrentLimit(40);
-        config.closedLoop.p(Constants.ElevatorConstants.KP);
-        config.closedLoop.i(Constants.ElevatorConstants.KI);
-        config.closedLoop.d(Constants.ElevatorConstants.KD);
-        config.closedLoop.velocityFF(Constants.ElevatorConstants.KFF);
-        config.encoder.positionConversionFactor(Constants.ElevatorConstants.kMeterPerRevolution);
+ 
 
-        // Apply configuration to the motor
-        elevatorMotor.configure(config, PersistMode.kPersistParameters);
+  public ElevatorTwo() {
+    /*
+     * Apply the appropriate configurations to the SPARKs.
+     *
+     * kResetSafeParameters is used to get the SPARK to a known state. This
+     * is useful in case the SPARK is replaced.
+     *
+     * kPersistParameters is used to ensure the configuration is not lost when
+     * the SPARK loses power. This is useful for power cycles that may occur
+     * mid-operation.
+     */
+
+    elevator.configure(
+        Configs.CoralSubsystem.elevatorConfig,// Constants.ElevatorConstants.elevator
+        ResetMode.kResetSafeParameters,
+        PersistMode.kPersistParameters);
+   
+
+
+        
+
+    // Zero arm and elevator encoders on initialization
+  
+    elevatorEncoder.setPosition(0);
+
+   
+  }
+
+  /**
+   * Drive the arm and elevator motors to their respective setpoints. This will use MAXMotion
+   * position control which will allow for a smooth acceleration and deceleration to the mechanisms'
+   * setpoints.
+   */
+  private void moveToSetpoint() {
+    elevatorClosedLoopController.setReference(
+        elevatorCurrentTarget, ControlType.kMAXMotionPositionControl);
+  }
+
+  /** Zero the elevator encoder when the limit switch is pressed. */
+  private void zeroElevatorOnLimitSwitch() {
+    if (!wasResetByLimit && elevator.getReverseLimitSwitch().isPressed()) {
+      // Zero the encoder only when the limit switch is switches from "unpressed" to "pressed" to
+      // prevent constant zeroing while pressed
+      elevatorEncoder.setPosition(0);
+      wasResetByLimit = true;
+    } else if (!elevator.getReverseLimitSwitch().isPressed()) {
+      wasResetByLimit = false;
     }
+  }
 
-    public void setGoal(double position) {
-        goalState = new TrapezoidProfile.State(position, 0);
+  /** Zero the arm and elevator encoders when the user button is pressed on the roboRIO. */
+  private void zeroOnUserButton() {
+    if (!wasResetByButton && RobotController.getUserButton()) {
+      // Zero the encoders only when button switches from "unpressed" to "pressed" to prevent
+      // constant zeroing while pressed
+      wasResetByButton = true;
+      elevatorEncoder.setPosition(0);
+    } else if (!RobotController.getUserButton()) {
+      wasResetByButton = false;
     }
+  }
 
-    @Override
-    public void periodic() {
-        // Update the motion profile
-        TrapezoidProfile profile = new TrapezoidProfile(constraints, goalState, currentState);
-        currentState = profile.calculate(0.02); // Assuming a 20ms loop time
 
-        // Command the motor to the new position
-        pidController.setReference(currentState.position, ControlType.kPosition);
+  /**
+   * Command to set the subsystem setpoint. This will set the arm and elevator to their predefined
+   * positions for the given setpoint.
+   */
+  public Command setSetpointCommand(Setpoint setpoint) {
+    return this.runOnce(
+        () -> {
+          switch (setpoint) {
+            case kFeederStation:
+              
+              elevatorCurrentTarget = Constants.ElevatorConstants.kFeederStation;
+              break;
+            case kLevel1:
+             
+              elevatorCurrentTarget = Constants.ElevatorConstants.kLevel1;
+              break;
+            case kLevel2:
+              elevatorCurrentTarget = Constants.ElevatorConstants.kLevel2;
+              break;
+            case kLevel3:
+              elevatorCurrentTarget = Constants.ElevatorConstants.kLevel3;
+              break;
+            case kLevel4:
+              elevatorCurrentTarget = Constants.ElevatorConstants.kLevel4;
+              break;
+          }
+        });
+  }
 
-        // Optionally, display encoder position on SmartDashboard
-        SmartDashboard.putNumber("Elevator Position", encoder.getPosition());
-    }
+  /**
+   * Command to run the intake motor. When the command is interrupted, e.g. the button is released,
+   * the motor will stop.
+   */
+ 
+  /**
+   * Command to reverses the intake motor. When the command is interrupted, e.g. the button is
+   * released, the motor will stop.
+   */
+  
+  @Override
+  public void periodic() {
+    moveToSetpoint();
+    zeroElevatorOnLimitSwitch();
+    zeroOnUserButton();
 
-    public double getEncoderPosition() {
-        return encoder.getPosition();
+    // Display subsystem values
+   
+ 
+    SmartDashboard.putNumber("Coral/Elevator/Target Position", elevatorCurrentTarget);
+    SmartDashboard.putNumber("Coral/Elevator/Actual Position", elevatorEncoder.getPosition());
+  
+
+    
+
+
+
     }
 }
